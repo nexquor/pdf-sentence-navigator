@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>PDF Sentence Navigator</title>
+  <style>
+    body {
+      margin: 0; padding: 0;
+      font-family: system-ui, sans-serif;
+      background: #333; display: flex;
+      flex-direction: column; height: 100vh;
+    }
+    #toolbar {
+      background: #f1f1f1; padding: 15px 20px;
+      display: flex; align-items: center; gap: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2); z-index: 10;
+    }
+    #instructions {
+      font-size: 14px; color: #444;
+    }
+    #pdf-wrapper {
+      flex: 1; overflow: auto; padding: 20px;
+      display: flex; flex-direction: column; align-items: center;
+    }
+    .page-container {
+      position: relative; margin-bottom: 20px;
+      background: white; box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+    }
+    canvas { display: block; }
+    /* Transparent overlay to hold selectable text */
+    .textLayer {
+      position: absolute; top: 0; left: 0; right: 0; bottom: 0; overflow: hidden;
+    }
+    .textLayer span {
+      color: transparent; position: absolute;
+      white-space: pre; cursor: text; transform-origin: 0% 0%;
+    }
+    /* The highlight styling applied programmatically */
+    ::highlight(sentence-highlight) {
+      background-color: rgba(255, 255, 0, 0.4);
+    }
+  </style>
+  <!-- Third-party local PDF.js library -->
+  <script src="pdf.min.js"></script>
+  <!-- Extension logic -->
+  <script src="viewer.js"></script>
+</head>
+<body>
+  <div id="toolbar">
+    <input type="file" id="file-input" accept="application/pdf" />
+    <div id="instructions">
+      Load a PDF, then press <b>TAB</b> for Next Sentence, <b>SHIFT + TAB</b> for Previous.
+    </div>
+  </div>
+  <div id="pdf-wrapper">
+    <div id="pdf-container"></div>
+  </div>
+</body>
+</html>

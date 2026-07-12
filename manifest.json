@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "PDF Sentence Navigator",
+  "version": "1.0",
+  "description": "Navigate PDF sentences locally using TAB and SHIFT+TAB.",
+  "action": {
+    "default_title": "Open PDF Viewer"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}
