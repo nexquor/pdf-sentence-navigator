@@ -14,9 +14,33 @@
       background: #f1f1f1; padding: 15px 20px;
       display: flex; align-items: center; gap: 20px;
       box-shadow: 0 2px 4px rgba(0,0,0,0.2); z-index: 10;
+      flex-wrap: wrap;
     }
     #instructions {
       font-size: 14px; color: #444;
+    }
+    #sentence-counter {
+      font-size: 14px; color: #222;
+      font-weight: 600;
+      margin-left: auto;
+    }
+    #status-bar {
+      padding: 10px 20px;
+      font-size: 14px;
+      text-align: center;
+      display: none;
+    }
+    #status-bar.loading {
+      display: block;
+      background: #fff3cd; color: #856404;
+    }
+    #status-bar.error {
+      display: block;
+      background: #f8d7da; color: #721c24;
+    }
+    #status-bar.success {
+      display: block;
+      background: #d4edda; color: #155724;
     }
     #pdf-wrapper {
       flex: 1; overflow: auto; padding: 20px;
@@ -51,7 +75,9 @@
     <div id="instructions">
       Load a PDF, then press <b>TAB</b> for Next Sentence, <b>SHIFT + TAB</b> for Previous.
     </div>
+    <div id="sentence-counter"></div>
   </div>
+  <div id="status-bar"></div>
   <div id="pdf-wrapper">
     <div id="pdf-container"></div>
   </div>

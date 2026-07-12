@@ -1,0 +1,15 @@
+{
+  "name": "pdf-sentence-navigator",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Chrome extension to navigate PDF sentences using TAB/SHIFT+TAB",
+  "scripts": {
+    "build": "tsc && node scripts/copy-assets.js",
+    "watch": "tsc --watch",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.287",
+    "typescript": "^5.7.0"
+  }
+}
