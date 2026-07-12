@@ -3,8 +3,9 @@
  *
  * Renders a PDF using PDF.js, extracts text, splits it into sentences,
  * and allows keyboard navigation (TAB / SHIFT+TAB) with visual highlighting
- * via the CSS Custom Highlight API (with a Selection-based fallback).
  */
+
+import { LinePos, isLayoutBreak, mergeBoundaries } from './layoutBoundaries.js';
 
 // ── Interfaces ───────────────────────────────────────────────────
 
@@ -152,6 +153,9 @@ document.addEventListener('DOMContentLoaded', (): void => {
 
     const textSpans: TextSpanMapping[] = [];
     let globalText = '';
+    const layoutOffsets: number[] = [];
+    let prevLinePos: LinePos | null = null;
+    let minRecentX = Infinity;
 
     try {
       for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
@@ -224,6 +228,17 @@ document.addEventListener('DOMContentLoaded', (): void => {
             transform[2] * transform[2] + transform[3] * transform[3]
           );
 
+          // ── Layout Break Detection ──
+          const currLinePos: LinePos = { x: transform[4], y: transform[5], height: fontHeight };
+          minRecentX = Math.min(minRecentX, currLinePos.x);
+
+          if (isLayoutBreak(prevLinePos, currLinePos, minRecentX)) {
+            layoutOffsets.push(globalText.length);
+            minRecentX = currLinePos.x;
+          }
+          prevLinePos = currLinePos;
+          // ────────────────────────────
+
           span.style.left = `${transform[4]}px`;
           span.style.top = `${transform[5] - fontHeight}px`;
           span.style.fontSize = `${fontHeight}px`;
@@ -266,7 +281,8 @@ document.addEventListener('DOMContentLoaded', (): void => {
     textSpansStore = textSpans;
     globalTextStore = globalText;
 
-    parseSentences(globalText);
+    // 4. Parse sentences from the accumulated text
+    parseSentences(globalText, layoutOffsets);
     updateCounter();
 
     if (sentences.length > 0) {
@@ -313,18 +329,35 @@ document.addEventListener('DOMContentLoaded', (): void => {
 
 /**
  * Parse the global concatenated text into sentence ranges
- * using the modern Intl.Segmenter API.
+ * using the modern Intl.Segmenter API, combined with layout boundaries.
  */
-function parseSentences(text: string): void {
+function parseSentences(text: string, layoutOffsets: number[]): void {
   sentences = [];
   if (text.trim().length === 0) return;
 
   const segmenter = new Intl.Segmenter(undefined, { granularity: 'sentence' });
   const segments = segmenter.segment(text);
-
+  
+  // Extract segmenter boundary offsets (end of each sentence segment)
+  const segmenterOffsets: number[] = [];
   for (const segment of segments) {
-    let start: number = segment.index;
-    let end: number = segment.index + segment.segment.length - 1;
+    segmenterOffsets.push(segment.index + segment.segment.length);
+  }
+
+  // Merge Intl boundaries with layout boundaries
+  const allBoundaries = mergeBoundaries(segmenterOffsets, layoutOffsets);
+
+  // Build sentence ranges from merged boundaries
+  let sentenceStart = 0;
+  
+  // Skip leading whitespace initially
+  while (sentenceStart < text.length && /\s/.test(text[sentenceStart])) {
+    sentenceStart++;
+  }
+
+  for (const boundaryEnd of allBoundaries) {
+    let start: number = sentenceStart;
+    let end: number = boundaryEnd - 1;
 
     // Trim leading whitespace
     while (start <= end && /\s/.test(text[start])) {
@@ -336,6 +369,19 @@ function parseSentences(text: string): void {
       end--;
     }
 
+    if (start <= end) {
+      sentences.push({ start, end });
+    }
+
+    sentenceStart = boundaryEnd;
+  }
+  
+  // Capture any remaining trailing text
+  if (sentenceStart < text.length) {
+    let start: number = sentenceStart;
+    let end: number = text.length - 1;
+    while (start <= end && /\s/.test(text[start])) start++;
+    while (end >= start && /\s/.test(text[end])) end--;
     if (start <= end) {
       sentences.push({ start, end });
     }

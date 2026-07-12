@@ -1,6 +1,5 @@
 /**
  * Type declarations for the CSS Custom Highlight API.
- * This API is relatively new and not yet in all @types/dom packages.
  */
 
 declare class Highlight {
