@@ -37,6 +37,7 @@ let sentences: SentenceRange[] = [];
 let textSpansStore: TextSpanMapping[] = [];
 let globalTextStore = '';
 let currentSentenceIndex = -1;
+let totalPages = 0;
 
 // ── DOM References ───────────────────────────────────────────────
 
@@ -52,34 +53,151 @@ document.addEventListener('DOMContentLoaded', (): void => {
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'pdf.worker.min.js';
 
   const fileInput = getElement<HTMLInputElement>('file-input');
+  const uploadBtn = getElement<HTMLButtonElement>('upload-btn');
   const pdfContainer = getElement<HTMLDivElement>('pdf-container');
-  const statusBar = getElement<HTMLDivElement>('status-bar');
-  const sentenceCounter = getElement<HTMLDivElement>('sentence-counter');
-  const instructions = getElement<HTMLDivElement>('instructions');
+  const toastContainer = getElement<HTMLDivElement>('toast-container');
+  
+  const sidebar = getElement<HTMLDivElement>('sidebar');
+  const sidebarToggleMain = getElement<HTMLButtonElement>('sidebar-toggle-main');
+  const sidebarToggleInside = getElement<HTMLButtonElement>('sidebar-toggle-inside');
+  
+  const progressText = getElement<HTMLDivElement>('progress-text');
+  const progressFill = getElement<HTMLDivElement>('progress-fill');
+  const activeSentenceText = getElement<HTMLDivElement>('active-sentence-text');
+  
+  const pageIndicator = getElement<HTMLDivElement>('page-indicator');
+  
+  const widgetToggle = getElement<HTMLButtonElement>('widget-toggle');
+  const widgetMenu = getElement<HTMLDivElement>('widget-menu');
+  const themeToggle = getElement<HTMLInputElement>('theme-toggle');
+  const swatches = document.querySelectorAll('.swatch');
+  
+  const versionEl = getElement<HTMLSpanElement>('app-version');
+  const pdfSourceUrl = getElement<HTMLSpanElement>('pdf-source-url');
+  const copyUrlBtn = getElement<HTMLButtonElement>('copy-url-btn');
 
-  // ── Status Helpers ───────────────────────────────────────────
+  // Trigger file input when custom button is clicked
+  uploadBtn.addEventListener('click', () => fileInput.click());
+
+  // Toggle Sidebar
+  function toggleSidebar() {
+    document.body.classList.toggle('sidebar-collapsed');
+  }
+  
+  // Attach toggle to both buttons
+  sidebarToggleInside.addEventListener('click', toggleSidebar);
+  sidebarToggleMain.addEventListener('click', toggleSidebar);
+
+  // ── Auto-Load from URL Parameter ─────────────────────────────
+
+  try {
+    const manifest = chrome.runtime.getManifest();
+    versionEl.textContent = `v${manifest.version} (Manifest V3)`;
+  } catch (e) {
+    versionEl.textContent = 'v1.1.0 (Manifest V3)'; // fallback
+  }
+
+  widgetToggle.addEventListener('click', (e) => {
+    e.stopPropagation();
+    widgetMenu.classList.toggle('open');
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!widgetMenu.contains(e.target as Node) && !widgetToggle.contains(e.target as Node)) {
+      widgetMenu.classList.remove('open');
+    }
+  });
+
+  themeToggle.addEventListener('change', (e) => {
+    const isDark = (e.target as HTMLInputElement).checked;
+    if (isDark) {
+      document.body.classList.add('theme-dark');
+    } else {
+      document.body.classList.remove('theme-dark');
+    }
+  });
+
+  swatches.forEach(swatch => {
+    swatch.addEventListener('click', (e) => {
+      const target = e.target as HTMLDivElement;
+      const color = target.dataset.color;
+      if (color) {
+        document.documentElement.style.setProperty('--highlight-color', color);
+        swatches.forEach(s => s.classList.remove('active'));
+        target.classList.add('active');
+      }
+    });
+  });
+
+  // ── Status Helpers (Toasts) ──────────────────────────────────
 
   function showStatus(message: string, type: StatusType): void {
-    statusBar.textContent = message;
-    statusBar.className = type;
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.textContent = message;
+    
+    toastContainer.appendChild(toast);
+    
+    // Trigger animation next frame
+    requestAnimationFrame(() => {
+      toast.classList.add('show');
+    });
+
+    // Auto-remove success/error toasts after 4s
+    if (type !== 'loading') {
+      setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+      }, 4000);
+    }
   }
 
   function hideStatus(): void {
-    statusBar.className = '';
-    statusBar.textContent = '';
+    const toasts = toastContainer.querySelectorAll('.toast.loading');
+    toasts.forEach(t => {
+      t.classList.remove('show');
+      setTimeout(() => t.remove(), 300);
+    });
   }
 
   function updateCounter(): void {
     if (sentences.length === 0) {
-      sentenceCounter.textContent = '';
+      progressText.textContent = '0 / 0';
+      progressFill.style.width = '0%';
       return;
     }
-    if (currentSentenceIndex < 0) {
-      sentenceCounter.textContent = `Press TAB to start · ${sentences.length} sentences`;
-      return;
-    }
-    sentenceCounter.textContent = `Sentence ${currentSentenceIndex + 1} / ${sentences.length}`;
+
+    const current = currentSentenceIndex + 1;
+    progressText.textContent = `${current} / ${sentences.length}`;
+    
+    const percent = (current / sentences.length) * 100;
+    progressFill.style.width = `${percent}%`;
   }
+
+  // Update Page Indicator on Scroll
+  pdfContainer.parentElement?.addEventListener('scroll', () => {
+    if (totalPages === 0) return;
+    
+    const pages = document.querySelectorAll('.page-container');
+    let visiblePageNum = 1;
+    let minDistance = Infinity;
+    const wrapperRect = pdfContainer.parentElement!.getBoundingClientRect();
+    const wrapperCenter = wrapperRect.top + (wrapperRect.height / 2);
+
+    pages.forEach(page => {
+      const rect = page.getBoundingClientRect();
+      const pageCenter = rect.top + (rect.height / 2);
+      const distance = Math.abs(wrapperCenter - pageCenter);
+      
+      if (distance < minDistance) {
+        minDistance = distance;
+        visiblePageNum = parseInt(page.getAttribute('data-page-number') || '1', 10);
+      }
+    });
+
+    pageIndicator.style.display = 'block';
+    pageIndicator.textContent = `Page ${visiblePageNum} / ${totalPages}`;
+  });
 
   // ── Auto-Load from URL Parameter ─────────────────────────────
 
@@ -87,13 +205,24 @@ document.addEventListener('DOMContentLoaded', (): void => {
   const pdfUrl: string | null = params.get('file');
 
   if (pdfUrl) {
-    // Hide the file input if we are auto-loading from a URL
+    // Hide the file input buttons if we are auto-loading from a URL
     fileInput.style.display = 'none';
+    uploadBtn.style.display = 'none';
+    
+    // Update popover URL info
+    pdfSourceUrl.textContent = pdfUrl;
+    pdfSourceUrl.title = pdfUrl;
+    copyUrlBtn.style.display = 'block';
+    copyUrlBtn.addEventListener('click', () => {
+      navigator.clipboard.writeText(pdfUrl).then(() => {
+        showStatus('URL copied to clipboard!', 'success');
+      });
+    });
+
     loadPdfFromUrl(pdfUrl);
   }
 
   async function loadPdfFromUrl(url: string): Promise<void> {
-    showStatus(`Loading PDF from: ${url}`, 'loading');
     try {
       const response: Response = await fetch(url);
       if (!response.ok) {
@@ -115,7 +244,6 @@ document.addEventListener('DOMContentLoaded', (): void => {
     const file: File | undefined = target.files?.[0];
     if (!file) return;
 
-    showStatus('Loading PDF…', 'loading');
     try {
       const arrayBuffer: ArrayBuffer = await file.arrayBuffer();
       await loadPdf(arrayBuffer);
@@ -125,7 +253,6 @@ document.addEventListener('DOMContentLoaded', (): void => {
       console.error('Failed to read file:', err);
     }
   });
-
   // ── Core PDF Loading & Rendering ─────────────────────────────
 
   async function loadPdf(arrayBuffer: ArrayBuffer): Promise<void> {
@@ -158,6 +285,7 @@ document.addEventListener('DOMContentLoaded', (): void => {
     let minRecentX = Infinity;
 
     try {
+      totalPages = pdf.numPages;
       for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
         const page: pdfjsLib.PDFPageProxy = await pdf.getPage(pageNum);
         const scale = 1.5;
@@ -166,6 +294,7 @@ document.addEventListener('DOMContentLoaded', (): void => {
         // Page container
         const pageContainer: HTMLDivElement = document.createElement('div');
         pageContainer.className = 'page-container';
+        pageContainer.setAttribute('data-page-number', pageNum.toString());
         pageContainer.style.width = `${viewport.width}px`;
         pageContainer.style.height = `${viewport.height}px`;
 
@@ -290,10 +419,6 @@ document.addEventListener('DOMContentLoaded', (): void => {
         `PDF loaded — ${sentences.length} sentences found. Press TAB to navigate.`,
         'success'
       );
-      setTimeout(hideStatus, 3000);
-      
-      // Update the instructions to remove "Load a PDF" since one is already loaded
-      instructions.innerHTML = 'Press <b>TAB</b> for Next Sentence, <b>SHIFT + TAB</b> for Previous.';
     } else {
       showStatus('PDF loaded but no sentences were detected.', 'error');
     }
@@ -425,11 +550,22 @@ function findNodeAtGlobalOffset(
  * Highlight the current sentence using the CSS Custom Highlight API,
  * falling back to window.getSelection() for older browsers.
  */
-function highlightCurrentSentence(): void {
-  if (currentSentenceIndex < 0 || currentSentenceIndex >= sentences.length) return;
+  function highlightCurrentSentence(): void {
+    if (CSS.highlights) {
+      CSS.highlights.clear();
+    }
+    if (currentSentenceIndex < 0 || currentSentenceIndex >= sentences.length) return;
 
-  const sentence: SentenceRange = sentences[currentSentenceIndex];
-  const textSpans: TextSpanMapping[] = textSpansStore;
+    const sentence: SentenceRange = sentences[currentSentenceIndex];
+    
+    // Update active sentence text in sidebar
+    const activeSentenceText = document.getElementById('active-sentence-text');
+    if (activeSentenceText) {
+      const sentenceText = globalTextStore.substring(sentence.start, sentence.end + 1);
+      activeSentenceText.textContent = sentenceText.trim() ? `"${sentenceText.trim()}"` : '';
+    }
+
+    const textSpans: TextSpanMapping[] = textSpansStore;
 
   const startMapping: NodeOffset | null = findNodeAtGlobalOffset(textSpans, sentence.start);
   const endMapping: NodeOffset | null = findNodeAtGlobalOffset(textSpans, sentence.end);
@@ -482,7 +618,13 @@ function highlightCurrentSentence(): void {
       const endOffset: number = Math.min(endMapping.offset + 1, endMapping.node.length);
       range.setEnd(endMapping.node, endOffset);
       selection.addRange(range);
-      startMapping.node.parentElement?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      
+      if (startMapping.node.parentElement) {
+        startMapping.node.parentElement.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+        });
+      }
     } catch (err) {
       console.error('Error creating selection range:', err);
     }
