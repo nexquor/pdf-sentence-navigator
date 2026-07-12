@@ -9,6 +9,7 @@ A **Manifest V3** Chrome Extension written in **TypeScript** that allows users t
 - **`TAB`:** Highlights and jumps to the next sentence.
 - **`SHIFT + TAB`:** Highlights and jumps to the previous sentence.
 - Built using **PDF.js** (bundled) and the modern **CSS Custom Highlight API** for non-destructive DOM highlighting, with a `window.getSelection()` fallback for older browsers.
+- **Robust Sentence Detection:** Uses the native **Intl.Segmenter API** for accurate, locale-aware sentence boundary detection without fragile regex rules.
 
 ## Prerequisites
 
@@ -103,4 +104,3 @@ npm run clean
 
 - **Chrome's built-in PDF viewer is bypassed:** While the extension is enabled, all `.pdf` URLs are redirected to the extension's custom viewer instead of Chrome's native PDF viewer.
 - **PDF URL detection is path-based:** The extension identifies PDFs by checking if the URL path ends with `.pdf`. PDFs served with a Content-Type header but without a `.pdf` extension in the URL will not be automatically intercepted (use the manual file picker in that case).
-- **Sentence splitting is heuristic:** The extension handles common abbreviations (Mr., Dr., U.S., etc.) and decimal numbers, but edge cases in complex documents may occasionally produce imperfect sentence boundaries.

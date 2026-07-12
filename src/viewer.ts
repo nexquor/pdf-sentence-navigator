@@ -45,16 +45,6 @@ function getElement<T extends HTMLElement>(id: string): T {
   return el as T;
 }
 
-// ── Common Abbreviations ─────────────────────────────────────────
-
-const ABBREVIATIONS: ReadonlySet<string> = new Set([
-  'mr', 'mrs', 'ms', 'dr', 'prof', 'sr', 'jr', 'st',
-  'vs', 'etc', 'inc', 'ltd', 'co', 'corp',
-  'jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec',
-  'fig', 'eq', 'no', 'vol', 'dept', 'univ', 'approx',
-  'govt', 'assn', 'bros', 'gen', 'rep', 'sen',
-]);
-
 // ── Initialization ───────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', (): void => {
@@ -64,6 +54,7 @@ document.addEventListener('DOMContentLoaded', (): void => {
   const pdfContainer = getElement<HTMLDivElement>('pdf-container');
   const statusBar = getElement<HTMLDivElement>('status-bar');
   const sentenceCounter = getElement<HTMLDivElement>('sentence-counter');
+  const instructions = getElement<HTMLDivElement>('instructions');
 
   // ── Status Helpers ───────────────────────────────────────────
 
@@ -284,6 +275,9 @@ document.addEventListener('DOMContentLoaded', (): void => {
         'success'
       );
       setTimeout(hideStatus, 3000);
+      
+      // Update the instructions to remove "Load a PDF" since one is already loaded
+      instructions.innerHTML = 'Press <b>TAB</b> for Next Sentence, <b>SHIFT + TAB</b> for Previous.';
     } else {
       showStatus('PDF loaded but no sentences were detected.', 'error');
     }
@@ -318,111 +312,36 @@ document.addEventListener('DOMContentLoaded', (): void => {
 // ── Sentence Parsing ───────────────────────────────────────────
 
 /**
- * Determine whether a period at `dotIndex` in `text` is a real sentence boundary
- * (as opposed to an abbreviation, decimal number, or dotted acronym).
- */
-function isSentenceBoundary(text: string, dotIndex: number): boolean {
-  const afterDot: number = dotIndex + 1;
-
-  // Find the next non-whitespace character
-  let nextNonSpace: number = afterDot;
-  while (nextNonSpace < text.length && /\s/.test(text[nextNonSpace])) {
-    nextNonSpace++;
-  }
-
-  // End of text → boundary
-  if (nextNonSpace >= text.length) return true;
-
-  // If the next visible character isn't uppercase or a quote/bracket, probably not a boundary
-  const nextChar: string = text[nextNonSpace];
-  if (!/[A-Z"'\u201C\u201D([]/.test(nextChar)) return false;
-
-  // Extract the word immediately before the period
-  let wordStart: number = dotIndex - 1;
-  while (wordStart >= 0 && /[a-zA-Z]/.test(text[wordStart])) {
-    wordStart--;
-  }
-  wordStart++;
-
-  const wordBeforeDot: string = text.substring(wordStart, dotIndex).toLowerCase();
-
-  // Known abbreviation
-  if (ABBREVIATIONS.has(wordBeforeDot)) return false;
-
-  // Single-letter abbreviation patterns (e.g., "U.S.", "e.g.", "i.e.")
-  if (wordBeforeDot.length <= 1) {
-    if (dotIndex >= 2 && text[dotIndex - 2] === '.') return false;
-    if (dotIndex + 2 < text.length && text[dotIndex + 2] === '.') return false;
-  }
-
-  // Decimal numbers (e.g., "3.14", "$2.50")
-  if (wordStart > 0) {
-    const charBeforeWord: string = text[wordStart - 1];
-    if (/[0-9.]/.test(charBeforeWord) || charBeforeWord === '$') return false;
-  }
-  if (/^[0-9]+$/.test(wordBeforeDot)) return false;
-
-  return true;
-}
-
-/**
- * Parse the global concatenated text into sentence ranges.
- * Handles abbreviations, decimals, and trailing text without terminal punctuation.
+ * Parse the global concatenated text into sentence ranges
+ * using the modern Intl.Segmenter API.
  */
 function parseSentences(text: string): void {
   sentences = [];
   if (text.trim().length === 0) return;
 
-  // Find all sentence boundary positions
-  const boundaries: number[] = [];
+  const segmenter = new Intl.Segmenter(undefined, { granularity: 'sentence' });
+  const segments = segmenter.segment(text);
 
-  for (let i = 0; i < text.length; i++) {
-    const ch: string = text[i];
-    if (ch === '!' || ch === '?') {
-      boundaries.push(i);
-    } else if (ch === '.') {
-      if (isSentenceBoundary(text, i)) {
-        boundaries.push(i);
-      }
-    }
-  }
-
-  // Build sentence ranges from boundary positions
-  let sentenceStart = 0;
-
-  // Skip leading whitespace
-  while (sentenceStart < text.length && /\s/.test(text[sentenceStart])) {
-    sentenceStart++;
-  }
-
-  for (const boundaryEnd of boundaries) {
-    let start: number = sentenceStart;
+  for (const segment of segments) {
+    let start: number = segment.index;
+    let end: number = segment.index + segment.segment.length - 1;
 
     // Trim leading whitespace
-    while (start <= boundaryEnd && /\s/.test(text[start])) {
+    while (start <= end && /\s/.test(text[start])) {
       start++;
     }
 
-    if (start <= boundaryEnd) {
-      sentences.push({ start, end: boundaryEnd });
+    // Trim trailing whitespace
+    while (end >= start && /\s/.test(text[end])) {
+      end--;
     }
-
-    sentenceStart = boundaryEnd + 1;
-  }
-
-  // Capture trailing text without terminal punctuation
-  if (sentenceStart < text.length) {
-    let start: number = sentenceStart;
-    let end: number = text.length - 1;
-
-    while (start <= end && /\s/.test(text[start])) start++;
-    while (end >= start && /\s/.test(text[end])) end--;
 
     if (start <= end) {
       sentences.push({ start, end });
     }
   }
 }
+
 
 // ── Highlighting ─────────────────────────────────────────────────
 
